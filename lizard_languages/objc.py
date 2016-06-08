@@ -11,8 +11,8 @@ class ObjCReader(CLikeReader):
     def __init__(self, context):
         super(ObjCReader, self).__init__(context)
         self.parallel_states = [
-                CLikeNestingStackStates(context),
-                ObjCStates(context)]
+                ObjCStates(context),
+                CLikeNestingStackStates(context)]
 
     def fake_and_useless(self):
         pass
@@ -51,12 +51,7 @@ class ObjCStates(CLikeStates):  # pylint: disable=R0903
             self._state = self._state_objc_dec
             self.context.add_to_function_name(token)
         elif token == '{':
-            if self.param_stack:
-                parameter = " ".join(self.param_stack)
-                self.param_stack = []
-                parameter = parameter + token
-                self.context.parameter(parameter)
-            self.next(self._state_imp, "{")
+            self.next(self._state_entering_imp, "{")
         else:
             self._state = self._state_global
 
@@ -67,7 +62,7 @@ class ObjCStates(CLikeStates):  # pylint: disable=R0903
         elif token == ',':
             pass
         elif token == '{':
-            self.next(self._state_imp, "{")
+            self.next(self._state_entering_imp, "{")
         else:
             if self.param_stack:
                 parameter = " ".join(self.param_stack)

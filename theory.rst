@@ -2,6 +2,50 @@
 Theory
 ######
 
+Cyclomatic Complexity
+=====================
+
+Counting the Cyclomatic Complexity Number is one of the most early and fundamental function
+of Lizard. You can get more information about cyclomatic complexity from
+`<https://en.wikipedia.org/wiki/Cyclomatic_complexity>`_.
+
+The default way Lizard counts the CCN is mostly compatible with McCabe's theory
+(McCabe 1976 `<http://www.mccabe.com/pdf/mccabe-nist235r.pdf>`_), except that the
+switch/case structure is counted by number of cases instead of switch. If you want
+to strictly count by McCabe's definition, there's a Lizard extension to do that:
+
+::
+
+    lizard -Emccabe
+
+There's still an open issue that needs to be fixed. Forever loops, or loops without
+a condition shouldn't be counted.
+
+Below are some language specific notes about CCN.
+
+
+CCN for Nested Functions (Closures) and Classes
+-----------------------------------------------
+
+Within function definitions,
+nested constructs, such as functions, closures, and structs,
+are not part of the control flow graph of the function.
+There is no definitive approach to account for the complexity of these nested constructs.
+
+One obvious way is to consider the nested complexity separately,
+as is currently done for Python.
+
+The second approach is to add the inner construct complexity
+to the outer construct complexity metric,
+which would attempt to account for
+the total complexity of understanding, maintaining the *root* function.
+
+The third approach is to just ignore the complexity of the nested constructs.
+These constructs are either rare, or very simple, or idiomatic.
+Consider, for example, C++ lambda expressions.
+This approach is default for C++ and C++-like languages.
+
+
 Nested Control Structures
 =========================
 

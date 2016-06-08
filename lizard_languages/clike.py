@@ -26,8 +26,8 @@ class CLikeReader(CodeReader, CCppCommentsMixin):
     def __init__(self, context):
         super(CLikeReader, self).__init__(context)
         self.parallel_states = (
-                CLikeNestingStackStates(context),
                 CLikeStates(context),
+                CLikeNestingStackStates(context),
                 CppRValueRefStates(context))
 
     def preprocess(self, tokens):
@@ -72,16 +72,88 @@ class CppRValueRefStates(CodeStateMachine):
         self.context.add_condition(-tokens.count("&&"))
 
 
+# pylint: disable=R0903
 class CLikeNestingStackStates(CodeStateMachine):
-    # pylint: disable=R0903
+    """Machinery to track nesting levels of tokens.
+
+    The main indicators of nesting are braces: '{' and '}'.
+    However, the code is complicated due to braceless structures,
+    which are control-flow structures in C-like languages.
+    Moreover, using braces as nesting level indicators leads to a big caveat;
+    C++ initializer lists, uniform initialization,
+    and any other constructs with braces add extra nesting level.
+
+    Another complication comes from nested classes inside function bodies
+    and control-flow declarations/bodies.
+    The handling of these complex cases is unspecified and can be ignored.
+    """
+
+    # Beasts that can be defined within one line without braces.
+    __braceless_structures = set(['if', 'else', 'for', 'while', 'do',
+                                  'switch'])
+    __paren_count = 0  # Used only to tackle the beasts.
+    __braceless = None  # Applies only to the beasts.
+    __structure_brace_stack = []  # Boolean stack for structures' brace states.
+
+    def __pop_braceless_structures(self):
+        """Pops structures up to the one with braces."""
+        self.context.pop_nesting()
+        is_structure = None
+        if self.__structure_brace_stack:
+            is_structure = self.__structure_brace_stack.pop()
+
+        while (is_structure is not None and self.__structure_brace_stack and
+                self.__structure_brace_stack[-1]):
+            self.__structure_brace_stack.pop()
+            self.context.pop_nesting()
+
+    def __else_if_structure(self, token):
+        """Handles possible compound 'else if' after 'else' token."""
+        self._state = self.__declare_structure
+        if token != "if":
+            self._state(token)
+
+    def __declare_structure(self, token):
+        """Ignores structures between parentheses on structure declaration."""
+        if token == "(":
+            self.__paren_count += 1
+        elif token == ")":
+            # assert self.__paren_count > 0
+            self.__paren_count -= 1
+        elif self.__paren_count == 0:
+            self._state = self._state_global
+            if token == "{":
+                self.__braceless = False
+            else:
+                self.__braceless = True
+                self.context.add_bare_nesting()
+                self.__structure_brace_stack.append(True)
+            self._state(token)
 
     def _state_global(self, token):
-        if token in ("struct", "class", "namespace"):
+        """Dual-purpose state for global and structure bodies."""
+        if token == "template":
+            self._state = self._template_declaration
+
+        elif token in ("struct", "class", "namespace"):
             self._state = self._read_namespace
+
         elif token == "{":
             self.context.add_bare_nesting()
-        elif token == '}':
-            self.context.pop_nesting()
+            self.__structure_brace_stack.append(self.__braceless)
+            self.__braceless = None
+
+        elif token == '}' or (token == ";" and self.__structure_brace_stack and
+                              self.__structure_brace_stack[-1]):
+            self.__braceless = None
+            self.__pop_braceless_structures()
+
+        elif token in self.__braceless_structures:
+            # assert self.__paren_count == 0
+            if token == "else":
+                self._state = self.__else_if_structure
+            else:
+                self._state = self.__declare_structure
 
     @CodeStateMachine.read_until_then('({;')
     def _read_namespace(self, token, saved):
@@ -89,6 +161,11 @@ class CLikeNestingStackStates(CodeStateMachine):
         if token == "{":
             self.context.add_namespace(''.join(itertools.takewhile(
                 lambda x: x not in [":", "final"], saved)))
+
+    @CodeStateMachine.read_inside_brackets_then("<>", "_state_global")
+    def _template_declaration(self, _):
+        """Ignores template parameters."""
+        pass
 
 
 # pylint: disable=R0903
@@ -102,15 +179,15 @@ class CLikeStates(CodeStateMachine):
         self.bracket_stack = []
         self._saved_tokens = []
 
-    def start_new_function(self, name):
-        self.context.start_new_function(name)
+    def try_new_function(self, name):
+        self.context.try_new_function(name)
         self._state = self._state_function
         if name == 'operator':
             self._state = self._state_operator
 
     def _state_global(self, token):
         if token[0].isalpha() or token[0] in '_~':
-            self.start_new_function(token)
+            self.try_new_function(token)
 
     def _state_function(self, token):
         if token == '(':
@@ -164,7 +241,7 @@ class CLikeStates(CodeStateMachine):
             self._state = self._state_throw
         elif token == '(':
             long_name = self.context.current_function.long_name
-            self.start_new_function(long_name)
+            self.try_new_function(long_name)
             self._state_function(token)
         elif token == '{':
             self.next(self._state_entering_imp, "{")
@@ -221,7 +298,7 @@ class CLikeStates(CodeStateMachine):
         self._state = self._state_initialization_list
 
     def _state_entering_imp(self, token):
-        self.context.reset_complexity()
+        self.context.confirm_new_function()
         self.next(self._state_imp, token)
 
     @CodeStateMachine.read_inside_brackets_then("{}")
