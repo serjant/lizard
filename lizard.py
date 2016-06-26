@@ -40,11 +40,11 @@ except ImportError:
 try:
     from lizard_ext import print_xml
     from lizard_ext import html_output
-    from lizard_ext import auto_open
+    from lizard_ext import auto_open, auto_read
 except ImportError:
     pass
 
-VERSION = "1.12.2"
+VERSION = "1.12.5"
 
 DEFAULT_CCN_THRESHOLD, DEFAULT_WHITELIST, \
     DEFAULT_MAX_FUNC_LENGTH = 15, "whitelizard.txt", 1000
@@ -72,8 +72,7 @@ def _extension_arg(parser):
                         help='''User the extensions. The available extensions
                         are: -Ecpre: it will ignore code in the #else branch.
                         -Ewordcount: count word frequencies and generate tag
-                        cloud. -Efans: count the fan in and fan out of
-                        functions. -Eoutside: include the global code as one
+                        cloud. -Eoutside: include the global code as one
                         function.  -EIgnoreAssert: to ignore all code in
                         assert. -ENS: count nested control structures.''',
                         action="append",
@@ -120,6 +119,11 @@ def arg_parser(prog=None):
                         type=int,
                         dest="CCN",
                         default=DEFAULT_CCN_THRESHOLD)
+    parser.add_argument("-f", "--input_file",
+                        help='''get a list of filenames from the given file
+                        ''',
+                        type=str,
+                        dest="input_file")
     parser.add_argument("-L", "--length",
                         help='''Threshold for maximum function length
                         warning. The default value is %d.
@@ -252,6 +256,7 @@ class FunctionInfo(Nesting):  # pylint: disable=R0902
         self.comment_count = 0
         self.comment_words_count = 0
         self.comments_list = []
+        self.general_fan_out = 0
 
     @property
     def name_in_space(self):
@@ -525,7 +530,7 @@ class FileAnalyzer(object):  # pylint: disable=R0903
     def __call__(self, filename):
         try:
             return self.analyze_source_code(
-                filename, auto_open(filename, 'rU').read())
+                filename, auto_read(filename))
         except UnicodeDecodeError:
             sys.stderr.write("Error: doesn't support none utf encoding '%s'\n"
                              % filename)
@@ -656,6 +661,9 @@ class OutputScheme(object):
     def any_regression(self):
         return any(item.get('regression') for item in self.items)
 
+    def any_silent(self):
+        return any(hasattr(ex, 'silent_all_others') for ex in self.extensions)
+
     def value_columns(self):
         return [item['value'] for item in self.items]
 
@@ -763,6 +771,10 @@ def print_and_save_modules(all_fileinfos, extensions, scheme):
                     print(scheme.function_info(fun))
                 except UnicodeEncodeError:
                     print("Found ill-formatted unicode function name.")
+    for extension in extensions:
+        if hasattr(extension, 'reduce_again'):
+            for module_info in saved_fileinfos:
+                extension.reduce_again(module_info)
     print("%d file analyzed." % (len(saved_fileinfos)))
     print("==============================================================")
     print("NLOC   " + scheme.average_captions() + " function_cnt    file")
@@ -796,6 +808,15 @@ def print_result(result, option, scheme):
         if hasattr(extension, 'print_result'):
             extension.print_result()
     return warning_count
+
+
+def silent_printer(result, *_):
+    '''
+    just to exhaust the result, no output.
+    '''
+    for _ in result:
+        pass
+    return 0
 
 
 def print_clang_style_warning(code_infos, option, scheme):
@@ -940,7 +961,11 @@ def lizard_main(argv):
     options = parse_args(argv)
     printer = options.printer or print_result
     schema = OutputScheme(options.extensions)
+    if schema.any_silent():
+        printer = silent_printer
     schema.patch_for_extensions()
+    if options.input_file:
+        options.paths = auto_read(options.input_file).splitlines()
     result = analyze(
         options.paths,
         options.exclude,
