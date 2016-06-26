@@ -1,9 +1,8 @@
 import unittest
-from lizard import  analyze_file
+from lizard import analyze_file
 
 
 class Test_objc_lizard(unittest.TestCase):
-
     def create_objc_lizard(self, source_code):
         return analyze_file.analyze_source_code("a.m", source_code).function_list
 
@@ -34,9 +33,12 @@ class Test_objc_lizard(unittest.TestCase):
         self.assertEqual("scanJSONObject:( id * ) error:( NSError ** )", result[0].long_name)
 
     def test_one_objc_function_with_three_param(self):
-        result = self.create_objc_lizard("- (id)initWithRequest:(NSURLRequest *)request delegate:(id <NSURLConnectionDelegate>)delegate startImmediately:(BOOL)startImmediately{}")
+        result = self.create_objc_lizard(
+            "- (id)initWithRequest:(NSURLRequest *)request delegate:(id <NSURLConnectionDelegate>)delegate startImmediately:(BOOL)startImmediately{}")
         self.assertEqual("initWithRequest: delegate: startImmediately:", result[0].name)
-        self.assertEqual("initWithRequest:( NSURLRequest * ) delegate:( id < NSURLConnectionDelegate > ) startImmediately:( BOOL )", result[0].long_name)
+        self.assertEqual(
+            "initWithRequest:( NSURLRequest * ) delegate:( id < NSURLConnectionDelegate > ) startImmediately:( BOOL )",
+            result[0].long_name)
 
     def test_implementation(self):
         code = """
@@ -59,4 +61,44 @@ class Test_objc_lizard(unittest.TestCase):
         self.assertEqual(2, len(result))
         self.assertEqual("classMethod", result[0].name)
 
+    def test_function_list(self):
+        code = """
+                #import "LogsViewController.h"
+                #import "ProcessesTableViewCell.h"
+                #import "SystemUtility.h"
+                #import "Process.h"
+                #import "MBProgressHUD.h"
 
+                @interface ProcessesViewController ()
+
+                @end
+
+                @implementation ProcessesViewController
+
+                @synthesize processesTableView;
+                @synthesize tableContents;
+                @synthesize sortedKeys;
+                @synthesize adView;
+
+                - (id)initWithNibName:(NSString *)nibNameOrNil bundle:(NSBundle *)nibBundleOrNil {
+                    self = [super initWithNibName:nibNameOrNil bundle:nibBundleOrNil];
+                    if (self) {
+                        self.title = NSLocalizedString(@"Processes", @"Processes");
+                        if ([[UIDevice currentDevice] userInterfaceIdiom] == UIUserInterfaceIdiomPad) {
+                            self.tabBarItem.image = [UIImage imageNamed:@"first@2x"];
+                        } else {
+                            self.tabBarItem.image = [UIImage imageNamed:@"first"];
+                        }
+                    }
+
+                    return self;
+                }
+
+                - (BOOL)scanJSONObject:(id *)outObject error:(NSError **)outError {
+                    return YES;
+                }
+                @end
+        """
+
+        result = self.create_objc_lizard(code)
+        self.assertEqual(2, len(result))
