@@ -328,7 +328,8 @@ class NestingStack(object):
         self.function_stack = []
 
     def with_namespace(self, name):
-        return ''.join([x.name_in_space for x in self.nesting_stack] + [name])
+        names_in_space = [x.name_in_space for x in self.nesting_stack] + [name]
+        return ''.join(names_in_space)
 
     def add_bare_nesting(self):
         self.nesting_stack.append(self._create_nesting())
