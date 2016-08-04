@@ -328,7 +328,8 @@ class NestingStack(object):
         self.function_stack = []
 
     def with_namespace(self, name):
-        names_in_space = [x.name_in_space for x in self.nesting_stack] + [name]
+        names_in_space = [x.name_in_space for x in self.nesting_stack]
+        names_in_space.append(name)
         return ''.join(names_in_space)
 
     def add_bare_nesting(self):
@@ -679,12 +680,13 @@ class OutputScheme(object):
                         ext.FUNCTION_INFO[key].get("regression", None))
 
     def captions(self):
-        caps = [item.get('caption') for item in self.items]
-        return "".join(caption for caption in caps if caption)
+        captions = [item.get('caption') for item in self.items if item.get('caption')]
+        return "".join(captions)
 
     @staticmethod
     def _head(captions):
-        return "\n".join(("=" * len(captions), captions, "-" * len(captions)))
+        captions_len = len(captions)
+        return "\n".join(("=" * captions_len, captions, "-" * captions_len))
 
     def function_info_head(self):
         return self._head(self.captions())
